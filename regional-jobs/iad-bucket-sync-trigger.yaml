@@ -1,0 +1,143 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bucket-sync-iad-trigger
+  namespace: bucket-sync
+spec:
+  schedule: "*/30 * * * *"  # Run every hour at minute 0
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: bucket-sync-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: job-creator
+            image: bitnami/kubectl:latest
+            command:
+            - "/bin/bash"
+            - "-c"
+            args:
+            - |
+              set -e
+              
+              # Get timestamp for unique job name
+              TIMESTAMP=$(date +%Y%m%d%H%M)
+              
+              # Delete old job if it exists and is completed
+              kubectl delete job -n bucket-sync bucket-sync-iad-job --ignore-not-found
+              
+              # Create new job
+              cat <<EOF | kubectl create -f -
+              apiVersion: batch/v1
+              kind: Job
+              metadata:
+                name: bucket-sync-iad-job
+                namespace: bucket-sync
+                labels:
+                  app: bucket-sync
+                  region: iad
+              spec:
+                parallelism: 5
+                completions: 5
+                completionMode: Indexed
+                backoffLimit: 3
+                ttlSecondsAfterFinished: 3600
+                template:
+                  metadata:
+                    labels:
+                      app: bucket-sync
+                      region: iad
+                  spec:
+                    affinity:
+                      nodeAffinity:
+                        requiredDuringSchedulingIgnoredDuringExecution:
+                          nodeSelectorTerms:
+                          - matchExpressions:
+                            - key: bucket-sync-region
+                              operator: In
+                              values:
+                              - iad
+                    serviceAccountName: bucket-sync-sa
+                    restartPolicy: OnFailure
+                    initContainers:
+                    - name: queue-initializer
+                      image: python:3.9-slim
+                      resources:
+                        requests:
+                          cpu: "100m"
+                          memory: "256Mi"
+                        limits:
+                          cpu: "200m"
+                          memory: "512Mi"
+                      command: ["python", "/scripts/init_queue.py"]
+                      env:
+                      - name: POD_INDEX
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+                      - name: TOTAL_PODS
+                        value: "5"
+                      volumeMounts:
+                      - name: bucket-config
+                        mountPath: /etc/bucket-config
+                      - name: queue-volume
+                        mountPath: /queue
+                      - name: scripts-volume
+                        mountPath: /scripts
+                    containers:
+                    - name: worker
+                      image: python:3.9-slim
+                      resources:
+                        requests:
+                          cpu: "1"
+                          memory: "2Gi"
+                        limits:
+                          cpu: "2"
+                          memory: "4Gi"
+                      command: ["sh", "-c"]
+                      args:
+                      - |
+                        echo "Installing dependencies..." &&
+                        apt-get update && 
+                        apt-get install -y curl unzip && 
+                        curl https://rclone.org/install.sh | bash &&
+                        pip install kubernetes &&
+                        echo "Starting worker..." &&
+                        python /scripts/worker.py ||
+                        (echo "Worker failed with exit code \$?"; sleep 60)
+                      env:
+                      - name: PYTHONUNBUFFERED
+                        value: "1"
+                      - name: POD_INDEX
+                        valueFrom:
+                          fieldRef:
+                            fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+                      - name: TOTAL_PODS
+                        value: "5"
+                      volumeMounts:
+                      - name: bucket-config
+                        mountPath: /etc/bucket-config
+                        readOnly: true
+                      - name: queue-volume
+                        mountPath: /queue
+                      - name: scripts-volume
+                        mountPath: /scripts
+                        readOnly: true
+                      - name: logs
+                        mountPath: /logs
+                    volumes:
+                    - name: bucket-config
+                      configMap:
+                        name: bucket-sync-config-iad
+                    - name: queue-volume
+                      emptyDir: {}
+                    - name: scripts-volume
+                      configMap:
+                        name: sync-scripts
+                    - name: logs
+                      emptyDir: {}
+              EOF
+              
+              echo "Created parallel sync job for IAD region"
