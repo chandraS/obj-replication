@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: bucket-sync-cleanup
+  namespace: bucket-sync
+spec:
+  schedule: "55 * * * *"  # Run at 55 minutes past each hour
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: bucket-sync-sa
+          restartPolicy: OnFailure
+          containers:
+          - name: cleanup
+            image: bitnami/kubectl:latest
+            command:
+            - "/bin/bash"
+            - "-c"
+            args:
+            - |
+              set -e
+              echo "Running bucket sync cleanup job..."
+              
+              # Calculate the cutoff times
+              ONE_DAY_AGO=$(date -d "yesterday" +%Y-%m-%dT%H:%M:%SZ)
+              THREE_DAYS_AGO=$(date -d "3 days ago" +%Y-%m-%dT%H:%M:%SZ)
+              
+              # Get all jobs with app=bucket-sync label
+              echo "Finding jobs to clean up..."
+              JOBS=$(kubectl get jobs -n bucket-sync -l app=bucket-sync -o json)
+              
+              # Process completed jobs
+              echo "Cleaning up old completed jobs..."
+              echo "$JOBS" | jq -r '.items[] | select(.status.succeeded == 1) | select(.status.completionTime != null) | select(.status.completionTime < "'$ONE_DAY_AGO'") | .metadata.name' | while read job_name; do
+                if [ ! -z "$job_name" ]; then
+                  echo "Deleting completed job: $job_name"
+                  kubectl delete job -n bucket-sync "$job_name"
+                fi
+              done
+              
+              # Process failed jobs
+              echo "Cleaning up old failed jobs..."
+              echo "$JOBS" | jq -r '.items[] | select(.status.failed != null and .status.failed > 0) | select(.status.completionTime != null) | select(.status.completionTime < "'$THREE_DAYS_AGO'") | .metadata.name' | while read job_name; do
+                if [ ! -z "$job_name" ]; then
+                  echo "Deleting failed job: $job_name"
+                  kubectl delete job -n bucket-sync "$job_name"
+                fi
+              done
+              
+              echo "Cleanup completed"
