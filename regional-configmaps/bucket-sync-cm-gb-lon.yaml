@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bucket-sync-config-gb-lon-2
+  namespace: bucket-sync
+data:
+  bucket-pairs.json: |
+    [
+      {
+        "sourceBucket": "mgs3fs-test-replication",
+        "sourceRegion": "gb-lon-1",
+        "sourceCredentialsSecret": "mgs3fs-test-replication-credentials",
+        "destBucket": "mgs3fs-test-replication-dup",
+        "destRegion": "de-fra-1",
+        "destCredentialsSecret": "mgs3fs-test-replication-dup-credentials",
+        "schedule": null
+      }
+    ]

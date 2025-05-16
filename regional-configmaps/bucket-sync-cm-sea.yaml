@@ -1,0 +1,243 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bucket-sync-config-sea
+  namespace: bucket-sync
+data:
+  bucket-pairs.json: |
+    [
+      {
+        "sourceBucket": "harmonic-sea",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "source3-credentials",
+        "destBucket": "tf-lke-bucket",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "dest3-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "company1-project1-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "company1-project1-source-credentials",
+        "destBucket": "company1-project1-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "company1-project1-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "company2-project1-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "company2-project1-source-credentials",
+        "destBucket": "company2-project1-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "company2-project1-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "company3-project2-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "company3-project2-source-credentials",
+        "destBucket": "company3-project2-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "company3-project2-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "media-archive1-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "media-archive1-source-credentials",
+        "destBucket": "media-archive1-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "media-archive1-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "client-backup2-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "client-backup2-source-credentials",
+        "destBucket": "client-backup2-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "client-backup2-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "data-pipeline2-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "data-pipeline2-source-credentials",
+        "destBucket": "data-pipeline2-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "data-pipeline2-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "app-data3-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "app-data3-source-credentials",
+        "destBucket": "app-data3-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "app-data3-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "analytics-data1-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "analytics-data1-source-credentials",
+        "destBucket": "analytics-data1-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "analytics-data1-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "ml-datasets2-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "ml-datasets2-source-credentials",
+        "destBucket": "ml-datasets2-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "ml-datasets2-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "logs-archive1-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "logs-archive1-source-credentials",
+        "destBucket": "logs-archive1-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "logs-archive1-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "logs-archive4-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "logs-archive4-source-credentials",
+        "destBucket": "logs-archive4-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "logs-archive4-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "monitor-340-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "monitor-340-source-credentials",
+        "destBucket": "monitor-340-destination",
+        "destRegion": "us-sea-1",
+        "destCredentialsSecret": "monitor-340-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "telemetry-299-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "telemetry-299-source-credentials",
+        "destBucket": "telemetry-299-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "telemetry-299-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "events-273-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "events-273-source-credentials",
+        "destBucket": "events-273-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "events-273-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "metrics-879-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "metrics-879-source-credentials",
+        "destBucket": "metrics-879-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "metrics-879-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "events-366-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "events-366-source-credentials",
+        "destBucket": "events-366-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "events-366-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "telemetry-364-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "telemetry-364-source-credentials",
+        "destBucket": "telemetry-364-destination",
+        "destRegion": "us-sea-1",
+        "destCredentialsSecret": "telemetry-364-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "logstore-573-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "logstore-573-source-credentials",
+        "destBucket": "logstore-573-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "logstore-573-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "dataflow-412-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "dataflow-412-source-credentials",
+        "destBucket": "dataflow-412-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "dataflow-412-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "telemetry-510-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "telemetry-510-source-credentials",
+        "destBucket": "telemetry-510-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "telemetry-510-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "events-905-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "events-905-source-credentials",
+        "destBucket": "events-905-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "events-905-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "pipeline-649-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "pipeline-649-source-credentials",
+        "destBucket": "pipeline-649-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "pipeline-649-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "logstore-162-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "logstore-162-source-credentials",
+        "destBucket": "logstore-162-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "logstore-162-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-252-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "stream-252-source-credentials",
+        "destBucket": "stream-252-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "stream-252-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "metrics-771-source",
+        "sourceRegion": "us-sea-1",
+        "sourceCredentialsSecret": "metrics-771-source-credentials",
+        "destBucket": "metrics-771-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "metrics-771-destination-credentials",
+        "schedule": null
+      }
+    ]

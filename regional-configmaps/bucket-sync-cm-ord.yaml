@@ -1,0 +1,198 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bucket-sync-config-ord
+  namespace: bucket-sync
+data:
+  bucket-pairs.json: |
+    [
+      {
+        "sourceBucket": "harmonic-ord",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "source2-credentials",
+        "destBucket": "harmonic-west-bucket",
+        "destRegion": "us-sea-1",
+        "destCredentialsSecret": "dest2-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "metrics-771-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "metrics-771-source-credentials",
+        "destBucket": "metrics-771-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "metrics-771-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-651-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-651-source-credentials",
+        "destBucket": "stream-651-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "stream-651-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "monitor-826-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "monitor-826-source-credentials",
+        "destBucket": "monitor-826-destination",
+        "destRegion": "us-sea-1",
+        "destCredentialsSecret": "monitor-826-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "telemetry-174-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "telemetry-174-source-credentials",
+        "destBucket": "telemetry-174-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "telemetry-174-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "backup-872-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "backup-872-source-credentials",
+        "destBucket": "backup-872-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "backup-872-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-252-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-252-source-credentials",
+        "destBucket": "stream-252-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "stream-252-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "monitor-724-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "monitor-724-source-credentials",
+        "destBucket": "monitor-724-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "monitor-724-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "pipeline-480-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "pipeline-480-source-credentials",
+        "destBucket": "pipeline-480-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "pipeline-480-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-266-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-266-source-credentials",
+        "destBucket": "stream-266-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "stream-266-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-147-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-147-source-credentials",
+        "destBucket": "stream-147-destination",
+        "destRegion": "us-sea-1",
+        "destCredentialsSecret": "stream-147-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "pipeline-649-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "pipeline-649-source-credentials",
+        "destBucket": "pipeline-649-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "pipeline-649-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "metrics-743-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "metrics-743-source-credentials",
+        "destBucket": "metrics-743-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "metrics-743-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-845-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-845-source-credentials",
+        "destBucket": "stream-845-destination",
+        "destRegion": "us-iad-1",
+        "destCredentialsSecret": "stream-845-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "backup-465-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "backup-465-source-credentials",
+        "destBucket": "backup-465-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "backup-465-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "archive-665-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "archive-665-source-credentials",
+        "destBucket": "archive-665-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "archive-665-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "logstore-162-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "logstore-162-source-credentials",
+        "destBucket": "logstore-162-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "logstore-162-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "stream-464-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "stream-464-source-credentials",
+        "destBucket": "stream-464-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "stream-464-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "events-511-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "events-511-source-credentials",
+        "destBucket": "events-511-destination",
+        "destRegion": "us-mia-1",
+        "destCredentialsSecret": "events-511-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "telemetry-854-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "telemetry-854-source-credentials",
+        "destBucket": "telemetry-854-destination",
+        "destRegion": "us-ord-1",
+        "destCredentialsSecret": "telemetry-854-destination-credentials",
+        "schedule": null
+      },
+      {
+        "sourceBucket": "backup-801-source",
+        "sourceRegion": "us-ord-1",
+        "sourceCredentialsSecret": "backup-801-source-credentials",
+        "destBucket": "backup-801-destination",
+        "destRegion": "us-lax-1",
+        "destCredentialsSecret": "backup-801-destination-credentials",
+        "schedule": null
+      }
+    ]
