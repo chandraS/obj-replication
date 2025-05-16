@@ -1,0 +1,47 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bucket-sync-iad-pdb
+  namespace: bucket-sync
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: bucket-sync
+      region: iad
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bucket-sync-ord-pdb
+  namespace: bucket-sync
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: bucket-sync
+      region: ord
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bucket-sync-sea-pdb
+  namespace: bucket-sync
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: bucket-sync
+      region: sea
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bucket-sync-mia-pdb
+  namespace: bucket-sync
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: bucket-sync
+      region: mia
