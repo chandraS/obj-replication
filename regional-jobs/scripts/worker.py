@@ -1,0 +1,572 @@
+#!/usr/bin/env python3
+import json
+import os
+import random
+import time
+import base64
+import subprocess
+import traceback
+import concurrent.futures
+import datetime
+import logging
+import sys
+from kubernetes import client, config
+from pathlib import Path
+
+# Setup structured logging for Loki
+def setup_logger():
+    logger = logging.getLogger("bucket-sync")
+    logger.setLevel(logging.INFO)
+    
+    # Create a JSON formatter for Loki
+    class JsonFormatter(logging.Formatter):
+        def format(self, record):
+            log_record = {
+                "time": self.formatTime(record),
+                "level": record.levelname,
+                "message": record.getMessage(),
+                "component": "worker"
+            }
+            
+            # Add extra fields from record
+            for key, value in record.__dict__.items():
+                if key not in ['args', 'asctime', 'created', 'exc_info', 'exc_text', 
+                              'filename', 'funcName', 'id', 'levelname', 'levelno',
+                              'lineno', 'module', 'msecs', 'message', 'msg', 'name', 
+                              'pathname', 'process', 'processName', 'relativeCreated', 
+                              'stack_info', 'thread', 'threadName']:
+                    log_record[key] = value
+                
+            return json.dumps(log_record)
+    
+    # Configure handler to stdout (for Promtail to pick up)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(JsonFormatter())
+    logger.addHandler(handler)
+    
+    return logger
+
+# Global logger instance
+logger = setup_logger()
+
+def load_secret(secret_name, key):
+    try:
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        secret = v1.read_namespaced_secret(secret_name, "bucket-sync")
+        value = secret.data[key]
+        
+        # Kubernetes secrets are base64-encoded, we need to decode them
+        if isinstance(value, str):
+            # If it's already a string, decode it from base64
+            return base64.b64decode(value).decode('utf-8')
+        elif isinstance(value, bytes):
+            # If bytes, decode from base64
+            return base64.b64decode(value).decode('utf-8')
+        else:
+            # Convert any other type to string and decode
+            return base64.b64decode(str(value)).decode('utf-8')
+                
+    except Exception as e:
+        logger.error(f"Error loading {key} from {secret_name}: {str(e)}")
+        raise
+
+def get_last_successful_sync(source_bucket, dest_bucket):
+    try:
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        
+        # Get the current sync states from the ConfigMap
+        try:
+            sync_states_map = v1.read_namespaced_config_map("bucket-sync-states", "bucket-sync")
+            sync_states_json = sync_states_map.data.get("sync-states.json", "{}")
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                # ConfigMap doesn't exist yet, create it
+                logger.info("Sync states ConfigMap not found, will create on first successful sync", 
+                           extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+                return ""
+            else:
+                raise
+                
+        sync_states = json.loads(sync_states_json)
+        
+        # Create a key for this bucket pair
+        bucket_pair_key = f"{source_bucket}:{dest_bucket}"
+        
+        # Get the last sync time, or return an empty string if not found
+        last_sync = sync_states.get(bucket_pair_key, "")
+        if last_sync:
+            logger.info(f"Retrieved last sync time for {bucket_pair_key}: {last_sync}", 
+                       extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket, "last_sync": last_sync})
+        else:
+            logger.info(f"No previous sync found for {bucket_pair_key}", 
+                       extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+        
+        return last_sync
+    except Exception as e:
+        logger.error(f"Error getting last sync time: {str(e)}", 
+                    extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+        return ""  # Default to empty string which will sync everything
+
+def update_last_successful_sync(source_bucket, dest_bucket):
+    try:
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        
+        # Get current time in ISO format
+        current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # Try to get existing ConfigMap
+        try:
+            sync_states_map = v1.read_namespaced_config_map("bucket-sync-states", "bucket-sync")
+            sync_states_json = sync_states_map.data.get("sync-states.json", "{}")
+            sync_states = json.loads(sync_states_json)
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                # ConfigMap doesn't exist, create it
+                sync_states = {}
+                body = client.V1ConfigMap(
+                    metadata=client.V1ObjectMeta(name="bucket-sync-states"),
+                    data={"sync-states.json": "{}"}
+                )
+                v1.create_namespaced_config_map("bucket-sync", body)
+                sync_states_map = v1.read_namespaced_config_map("bucket-sync-states", "bucket-sync")
+            else:
+                raise
+        
+        # Create a key for this bucket pair
+        bucket_pair_key = f"{source_bucket}:{dest_bucket}"
+        
+        # Update with current time
+        sync_states[bucket_pair_key] = current_time
+        
+        # Update the ConfigMap
+        sync_states_map.data["sync-states.json"] = json.dumps(sync_states)
+        v1.replace_namespaced_config_map("bucket-sync-states", "bucket-sync", sync_states_map)
+        
+        logger.info(f"Updated last sync time for {bucket_pair_key}: {current_time}", 
+                   extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket, "last_sync": current_time})
+    except Exception as e:
+        logger.error(f"Error updating last sync time: {str(e)}", 
+                    extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+        traceback.print_exc()
+
+def update_sync_stats(source_bucket, dest_bucket, stats_data):
+    try:
+        config.load_incluster_config()
+        v1 = client.CoreV1Api()
+        
+        try:
+            stats_map = v1.read_namespaced_config_map("bucket-sync-stats", "bucket-sync")
+            current_stats = json.loads(stats_map.data.get("stats.json", "{}"))
+        except client.exceptions.ApiException as e:
+            if e.status == 404:
+                # ConfigMap doesn't exist, create it
+                current_stats = {}
+                body = client.V1ConfigMap(
+                    metadata=client.V1ObjectMeta(name="bucket-sync-stats"),
+                    data={"stats.json": "{}"}
+                )
+                v1.create_namespaced_config_map("bucket-sync", body)
+                stats_map = v1.read_namespaced_config_map("bucket-sync-stats", "bucket-sync")
+            else:
+                raise
+        
+        # Create a key for this bucket pair
+        bucket_pair_key = f"{source_bucket}:{dest_bucket}"
+        
+        # Update the stats
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        current_stats[bucket_pair_key] = {
+            "last_sync": timestamp,
+            "transferred_bytes": stats_data.get("transferred_bytes", "0"),
+            "transferred_files": stats_data.get("transferred_files", "0"),
+            "elapsed_time": stats_data.get("elapsed_time", "0"),
+            "average_speed": stats_data.get("average_speed", "0"),
+            "errors": stats_data.get("errors", 0),
+            "status": "success" if stats_data.get("returncode", 1) == 0 else "failed"
+        }
+        
+        # Update the ConfigMap
+        stats_map.data["stats.json"] = json.dumps(current_stats)
+        v1.replace_namespaced_config_map("bucket-sync-stats", "bucket-sync", stats_map)
+        
+        logger.info(f"Updated sync stats for {bucket_pair_key}", 
+                   extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+    except Exception as e:
+        logger.error(f"Error updating sync stats: {str(e)}", 
+                    extra={"source_bucket": source_bucket, "dest_bucket": dest_bucket})
+        traceback.print_exc()
+
+def process_item(item_path):
+    try:
+        with open(item_path) as f:
+            pair = json.load(f)
+        
+        source_bucket = pair['sourceBucket']
+        dest_bucket = pair['destBucket']
+        source_prefix = pair.get('sourcePrefix', '')
+        dest_prefix = pair.get('destPrefix', '')
+        
+        # Base context for logging
+        extra = {
+            'source_bucket': source_bucket,
+            'dest_bucket': dest_bucket,
+            'source_region': pair['sourceRegion'],
+            'dest_region': pair['destRegion']
+        }
+        
+        pod_name = os.environ.get("HOSTNAME", "unknown")
+        log_file = f"/logs/{source_bucket}_to_{dest_bucket}_{pod_name}.log"
+        config_file = f"/tmp/rclone_{os.getpid()}_{random.randint(1000, 9999)}.conf"
+        
+        logger.info(f"Processing bucket pair: {source_bucket} → {dest_bucket}", extra=extra)
+        
+        try:
+            # Load credentials
+            source_access_key = load_secret(pair['sourceCredentialsSecret'], 'accesskey')
+            source_secret_key = load_secret(pair['sourceCredentialsSecret'], 'secretkey')
+            dest_access_key = load_secret(pair['destCredentialsSecret'], 'accesskey')
+            dest_secret_key = load_secret(pair['destCredentialsSecret'], 'secretkey')
+
+            # Debug output (safe)
+            logger.info(f"Using source endpoint: {pair['sourceRegion']}.linodeobjects.com", extra=extra)
+            logger.info(f"Using dest endpoint: {pair['destRegion']}.linodeobjects.com", extra=extra)
+            logger.info(f"Source access key length: {len(source_access_key)}", extra=extra)
+            logger.info(f"Source secret key length: {len(source_secret_key)}", extra=extra)
+            logger.info(f"Dest access key length: {len(dest_access_key)}", extra=extra)
+            logger.info(f"Dest secret key length: {len(dest_secret_key)}", extra=extra)
+
+            # Generate rclone config
+            config = f"""
+            [source]
+            type = s3
+            provider = Ceph
+            access_key_id = {source_access_key}
+            secret_access_key = {source_secret_key}
+            endpoint = {pair['sourceRegion']}.linodeobjects.com
+            acl = private
+            no_check_bucket = true
+            
+            [dest]
+            type = s3
+            provider = Ceph
+            access_key_id = {dest_access_key}
+            secret_access_key = {dest_secret_key}
+            endpoint = {pair['destRegion']}.linodeobjects.com
+            acl = private
+            no_check_bucket = true
+            """
+            
+            with open(config_file, 'w') as f:
+                f.write(config)
+                
+            # Set restrictive permissions on the config file
+            try:
+                os.chmod(config_file, 0o600)  # Only owner can read/write
+            except Exception as e:
+                logger.warning(f"Could not set permissions on config file: {str(e)}", extra=extra)
+            
+            logger.info(f"Created rclone config at {config_file}", extra=extra)
+            
+            # Get the last successful sync time
+            last_sync = get_last_successful_sync(source_bucket, dest_bucket)
+            
+            # Use fewer transfers per process since we're running multiple concurrent processes
+            cmd = [
+                "rclone", "sync", 
+                f"source:{source_bucket}/{source_prefix}", 
+                f"dest:{dest_bucket}/{dest_prefix}",
+                f"--config={config_file}",
+                "--transfers=10",
+                "--checkers=16",
+                "--stats=30s",
+                f"--log-file={log_file}",
+                "--log-level=INFO",
+                "--log-format=json",  # Use JSON logging format
+                "--retries=3",
+                "--low-level-retries=10",
+                "--progress",
+                "--s3-disable-checksum",
+                "--s3-chunk-size=128M",
+                "--tpslimit=100",
+                "--tpslimit-burst=10",
+                "--bwlimit=250M",
+                "--no-update-modtime",
+                "--fast-list"
+            ]
+            
+            # Add differential sync time filter if we have previous sync data
+            if last_sync:
+                # Add 5 minute buffer to account for clock drift/skew
+                buffer_seconds = 300  # 5 minutes
+                
+                last_sync_dt = datetime.datetime.strptime(last_sync, "%Y-%m-%dT%H:%M:%SZ")
+                now = datetime.datetime.utcnow()
+                time_diff = now - last_sync_dt
+                seconds_ago = int(time_diff.total_seconds()) + buffer_seconds
+                cmd.append(f"--max-age={seconds_ago}s")
+                logger.info(f"Differential sync: Processing files newer than {seconds_ago} seconds", extra=extra)
+            else:
+                # If no previous sync, use min-age to avoid in-progress uploads
+                cmd.append("--min-age=15m")
+                logger.info(f"First sync: Using min-age=15m to avoid in-progress uploads", extra=extra)
+            
+            # Check if today is Sunday (weekday 6) for deletion
+            today_weekday = datetime.datetime.utcnow().weekday()
+            if today_weekday == 6:  # 0=Monday, 6=Sunday
+                cmd.append("--delete-after")
+                logger.info(f"Sunday maintenance: Deletion enabled for {source_bucket} → {dest_bucket}", extra=extra)
+            
+            logger.info(f"Starting sync: {source_bucket} → {dest_bucket}", extra=extra)
+            start_time = time.time()
+            
+            # Popen to capture output in real-time
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1 # Line buffered
+            )
+            
+            last_stats = None
+            transferred_bytes = "0"
+            transferred_files = "0"
+            speed = "0 B/s"
+
+            # Process the output with structured logging
+            for line in process.stdout:
+                try:
+                    line = line.strip()
+                    
+                    # Log the raw line with context
+                    logger.info(line, extra=extra)
+
+                    # Safely capture the last stats line
+                    if "Transferred:" in line:
+                        last_stats = line
+                        
+                        # Safely extract transferred bytes
+                        try:
+                            if "Transferred:" in line and "/" in line:
+                                parts = line.split(",")
+                                if len(parts) >= 1:
+                                    transferred_part = parts[0].strip()
+                                    if "Transferred:" in transferred_part:
+                                        transferred_split = transferred_part.split("Transferred:")
+                                        if len(transferred_split) > 1:
+                                            transferred_bytes = transferred_split[1].strip()
+                                            extra['transferred_bytes'] = transferred_bytes
+                                    
+                                # Try to extract speed if available
+                                speed_parts = [part for part in parts if "B/s" in part]
+                                if speed_parts:
+                                    speed = speed_parts[0].strip()
+                                    extra['speed'] = speed
+                        except Exception as parse_err:
+                            logger.warning(f"Could not parse transfer stats: {str(parse_err)}", extra=extra)
+                    
+                    # Safely extract files transferred count
+                    try:
+                        if "Transferred:" in line and "files" in line.lower():
+                            if "/" in line:
+                                file_parts = line.split("/")
+                                if len(file_parts) > 0:
+                                    count_part = file_parts[0]
+                                    if ":" in count_part:
+                                        count_split = count_part.split(":")
+                                        if len(count_split) > 1:
+                                            transferred_files = count_split[-1].strip()
+                                            extra['transferred_files'] = transferred_files
+                    except Exception as files_err:
+                        logger.warning(f"Could not parse file count: {str(files_err)}", extra=extra)
+                        
+                except Exception as line_err:
+                    logger.error(f"Error processing output line: {str(line_err)}", extra=extra)
+                    continue  # Continue to next line
+
+            # Process completion with structured logging
+            try:
+                process.wait()  # Wait for process to complete
+                elapsed = time.time() - start_time
+                elapsed_str = f"{elapsed:.1f}s"
+                extra['elapsed_time'] = elapsed_str
+
+                # Extract more detailed stats
+                stats_data = {
+                    "transferred_bytes": transferred_bytes,
+                    "transferred_files": transferred_files,
+                    "elapsed_time": elapsed_str,
+                    "average_speed": speed,
+                    "returncode": process.returncode,
+                    "errors": 0
+                }
+                
+                # Use structured logging for sync results
+                if process.returncode == 0:
+                    logger.info(
+                        f"Sync completed successfully in {elapsed:.2f}s",
+                        extra={
+                            **extra,
+                            'status': 'success'
+                        }
+                    )
+                    # Update the last sync time
+                    update_last_successful_sync(source_bucket, dest_bucket)
+                    # Update sync stats
+                    update_sync_stats(source_bucket, dest_bucket, stats_data)
+                else:
+                    logger.error(
+                        f"Sync failed with code {process.returncode} after {elapsed:.2f}s",
+                        extra={
+                            **extra,
+                            'status': 'failed',
+                            'error_code': process.returncode
+                        }
+                    )
+                    # Capture error logs if available
+                    try:
+                        with open(log_file, 'r') as f:
+                            last_lines = f.readlines()[-10:]
+                            error_log = ' '.join(line.strip() for line in last_lines)
+                            logger.error(f"Error details: {error_log}", extra=extra)
+                    except Exception as log_err:
+                        logger.error(f"Could not read error logs: {str(log_err)}", extra=extra)
+                    
+                    # Update stats with failure status
+                    stats_data["errors"] = 1
+                    update_sync_stats(source_bucket, dest_bucket, stats_data)
+                
+                # Cleanup
+                try:
+                    os.remove(config_file)
+                    logger.info(f"Removed config file {config_file}", extra=extra)
+                except Exception as e:
+                    logger.warning(f"Could not remove config file: {str(e)}", extra=extra)
+                    
+                # Return source bucket, dest bucket, and result status
+                return (source_bucket, dest_bucket, process.returncode)
+
+            except Exception as completion_err:
+                logger.error(f"Error during completion processing: {str(completion_err)}", extra=extra)
+                return (source_bucket, dest_bucket, 1)
+
+        except Exception as inner_e:
+            logger.error(f"Inner processing error for {source_bucket} -> {dest_bucket}: {str(inner_e)}", extra=extra)
+            traceback.print_exc()  # Print stack trace for debugging
+            return (source_bucket, dest_bucket, 1)
+
+    except Exception as outer_e:
+        source_bucket = "unknown"
+        dest_bucket = "unknown"
+        
+        # Try to extract bucket names if possible
+        try:
+            with open(item_path) as f:
+                pair_data = json.load(f)
+                source_bucket = pair_data.get('sourceBucket', 'unknown')
+                dest_bucket = pair_data.get('destBucket', 'unknown')
+        except:
+            pass
+        
+        logger.error(f"Processing failed for {source_bucket} -> {dest_bucket}: {str(outer_e)}", 
+                   extra={'source_bucket': source_bucket, 'dest_bucket': dest_bucket})
+        traceback.print_exc()  # Print stack trace for debugging
+        return (source_bucket, dest_bucket, 1)
+
+def main():
+    queue_dir = Path('/queue')
+    processed_dir = queue_dir / "processed"
+    failed_dir = queue_dir / "failed"
+    
+    processed_dir.mkdir(exist_ok=True)
+    failed_dir.mkdir(exist_ok=True)
+    
+    # Log pod info for debugging
+    pod_name = os.environ.get("HOSTNAME", "unknown")
+    pod_index = os.environ.get("POD_INDEX", "unknown")
+    total_pods = os.environ.get("TOTAL_PODS", "unknown")
+    logger.info(f"Worker starting - Pod: {pod_name}, Index: {pod_index}/{total_pods}", 
+              extra={'pod_name': pod_name, 'pod_index': pod_index, 'total_pods': total_pods})
+    
+    # Get all queue items at once
+    items = list(queue_dir.glob("item_*.json"))
+    if not items:
+        logger.info("No work items found", extra={'pod_name': pod_name})
+        return
+    
+    logger.info(f"Found {len(items)} items to process", extra={'pod_name': pod_name, 'items_count': len(items)})
+    
+    # Mark all items as processing first (to prevent race conditions with other pods)
+    processing_items = []
+    for item_path in items:
+        try:
+            processing_path = item_path.with_name(f"processing_{item_path.name}")
+            item_path.rename(processing_path)
+            # Store the tuple of (processing_path, original_name) for later use
+            processing_items.append((processing_path, item_path.name))
+            logger.info(f"Marked {item_path.name} as processing", extra={'pod_name': pod_name, 'item': item_path.name})
+        except Exception as e:
+            logger.error(f"Could not mark {item_path} as processing: {str(e)}", 
+                        extra={'pod_name': pod_name, 'item': item_path.name})
+    
+    # Available memory will limit how many processes we can run
+    # Start with 3 concurrent processes and adjust based on performance
+    max_concurrent = 3  # Process 3 bucket pairs at once
+    logger.info(f"Using max concurrency of {max_concurrent} for bucket sync", 
+              extra={'pod_name': pod_name, 'max_concurrent': max_concurrent})
+    
+    # Process items in parallel
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        # Submit all tasks
+        future_to_path = {executor.submit(process_item, path): (path, original_name) 
+                         for path, original_name in processing_items}
+        
+        # Process results as they complete
+        for future in concurrent.futures.as_completed(future_to_path):
+            path, original_name = future_to_path[future]
+            
+            try:
+                source_bucket, dest_bucket, result = future.result()
+                
+                # Move to appropriate directory
+                if result == 0:
+                    logger.info(f"Moving successful job for {source_bucket} -> {dest_bucket} to processed directory", 
+                              extra={'source_bucket': source_bucket, 'dest_bucket': dest_bucket, 'status': 'success'})
+                    path.rename(processed_dir / original_name)
+                else:
+                    logger.info(f"Moving failed job for {source_bucket} -> {dest_bucket} to failed directory", 
+                              extra={'source_bucket': source_bucket, 'dest_bucket': dest_bucket, 'status': 'failed'})
+                    path.rename(failed_dir / original_name)
+            
+            except Exception as e:
+                logger.error(f"Exception while processing {path}: {str(e)}", extra={'item_path': str(path)})
+                traceback.print_exc()
+                # Try to move to failed directory
+                try:
+                    path.rename(failed_dir / original_name)
+                except Exception as move_e:
+                    logger.error(f"Could not move {path} to failed directory: {str(move_e)}", 
+                               extra={'item_path': str(path)})
+
+if __name__ == "__main__":
+    logger.info("Starting bucket sync worker with concurrent processing")
+    try:
+        # Verify Kubernetes client connectivity
+        config.load_incluster_config()
+        client.CoreV1Api().list_namespaced_secret("bucket-sync", limit=1)
+        logger.info("Successfully connected to Kubernetes API")
+        
+        # Verify rclone is installed
+        if os.system("rclone version") != 0:
+            raise RuntimeError("rclone not found in PATH")
+        logger.info("Verified rclone installation")
+            
+        main()
+    except Exception as e:
+        logger.error(f"FATAL: {str(e)}")
+        traceback.print_exc()  # Print stack trace for debugging
+        time.sleep(60)  # Keep pod alive for debugging
+        raise
