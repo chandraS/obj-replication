@@ -1,0 +1,144 @@
+# loki-values.yaml for newer Loki Helm charts
+
+# Global settings
+global:
+  clusterDomain: "cluster.local"
+
+# Loki settings
+loki:
+  # Specify simple scalable mode
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  structuredConfig:
+    ingester:
+      chunk_idle_period: 1h
+      chunk_block_size: 262144
+      chunk_retain_period: 30s
+      lifecycler:
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+    limits_config:
+      enforce_metric_name: false
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      max_query_series: 10000
+      max_query_parallelism: 32
+      max_entries_limit_per_query: 50000
+      max_line_size: 262144
+    schema_config:
+      configs:
+        - from: 2020-07-01
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9095
+    storage_config:
+      boltdb_shipper:
+        active_index_directory: /data/loki/index
+        cache_location: /data/loki/index_cache
+        cache_ttl: 24h
+        shared_store: filesystem
+      filesystem:
+        directory: /data/loki/chunks
+    compactor:
+      working_directory: /data/loki/retention
+      shared_store: filesystem
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+    ruler:
+      storage:
+        type: local
+        local:
+          directory: /data/loki/rules
+
+# Configure single binary mode (simpler deployment)
+singleBinary:
+  replicas: 1
+
+# Persistence settings
+persistence:
+  enabled: true
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+# Service configuration to expose Loki
+service:
+  type: LoadBalancer
+
+# Promtail configuration for log collection
+promtail:
+  enabled: true
+  config:
+    clients:
+      - url: http://{{ .Release.Name }}:3100/loki/api/v1/push
+    snippets:
+      extraScrapeConfigs: |
+        - job_name: kubernetes-pods
+          kubernetes_sd_configs:
+            - role: pod
+              namespaces:
+                names:
+                  - bucket-sync
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_label_app]
+              action: replace
+              target_label: app
+            - source_labels: [__meta_kubernetes_pod_label_region]
+              action: replace
+              target_label: region
+            - source_labels: [__meta_kubernetes_pod_container_name]
+              action: replace
+              target_label: container
+            - source_labels: [__meta_kubernetes_pod_name]
+              action: replace
+              target_label: pod
+            - source_labels: [__meta_kubernetes_namespace]
+              action: replace
+              target_label: namespace
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              action: replace
+              target_label: node
+      pipelineStages:
+        - json:
+            expressions:
+              source_bucket: source_bucket
+              dest_bucket: dest_bucket
+              transferred_bytes: transferred_bytes
+              transferred_files: transferred_files
+              elapsed_time: elapsed_time
+              speed: speed
+              status: status
+              level: level
+              message: message
+              component: component
+        - labels:
+            source_bucket:
+            dest_bucket:
+            status:
+            component:
+            level:
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Disable Grafana by default
+grafana:
+  enabled: false
